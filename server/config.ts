@@ -8,6 +8,14 @@ function required(name: string): string {
 
 const dataDir = path.resolve(process.env.DATA_DIR ?? 'data');
 
+// Na Vercel o disco é temporário: sem banco remoto os dados sumiriam a cada deploy/reinício.
+if (process.env.VERCEL && !process.env.TURSO_DATABASE_URL) {
+  throw new Error(
+    'TURSO_DATABASE_URL não está definida neste ambiente da Vercel. Conecte o banco Turso ao projeto (Storage) ' +
+      'ou cadastre TURSO_DATABASE_URL e TURSO_AUTH_TOKEN em Settings → Environment Variables (ambiente Production) e faça redeploy.',
+  );
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   password: required('APP_PASSWORD'),

@@ -96,6 +96,8 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
 
       {server && (
         <dl className="diagnostics small">
+          <dt>Banco de dados</dt>
+          <dd>{server.database}</dd>
           <dt>Aparelhos inscritos</dt>
           <dd>{server.subscriptions}</dd>
           <dt>Agendador</dt>

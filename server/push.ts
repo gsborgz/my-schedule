@@ -88,5 +88,6 @@ pushRouter.get('/status', async (_req, res) => {
     subscriptions: Number(rows[0].n),
     lastCronRun: await getMeta('last_cron_run'),
     cronConfigured: Boolean(config.cronSecret),
+    database: config.database.url.startsWith('file:') ? 'arquivo local' : new URL(config.database.url).host,
   });
 });

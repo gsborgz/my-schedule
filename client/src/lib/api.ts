@@ -47,6 +47,9 @@ export const api = {
         '/api/push/test',
       ),
     status: () =>
-      request<{ subscriptions: number; lastCronRun: string | null; cronConfigured: boolean }>('GET', '/api/push/status'),
+      request<{ subscriptions: number; lastCronRun: string | null; cronConfigured: boolean; database: string }>(
+        'GET',
+        '/api/push/status',
+      ),
   },
 };
