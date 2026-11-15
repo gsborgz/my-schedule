@@ -72,7 +72,7 @@ export function AgendaPage() {
             onClick={() => setSelectedDay(d)}
           >
             <span>{DAY_SHORT[d]}</span>
-            <small>{byDay.get(d)!.length || ''}</small>
+            <i className={`day-dot ${byDay.get(d)!.length ? 'on' : ''}`} aria-hidden />
           </button>
         ))}
       </div>

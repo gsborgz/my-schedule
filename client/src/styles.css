@@ -131,6 +131,8 @@ textarea { resize: vertical; }
 
 /* Celular: navegação de módulos vira barra inferior */
 @media (max-width: 720px) {
+  /* backdrop-filter faria o nav "fixed" ficar preso ao cabeçalho em vez da tela */
+  .topbar { backdrop-filter: none; background: var(--surface); }
   .modules-nav {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
     justify-content: space-around;
@@ -242,7 +244,9 @@ textarea { resize: vertical; }
     border: 1px solid transparent; background: transparent; cursor: pointer;
     font-weight: 600; font-size: 0.85rem; color: var(--muted);
   }
-  .day-tab small { font-size: 0.7rem; min-height: 1em; }
+  .day-tab { gap: 5px; padding: 10px 0 8px; }
+  .day-dot { width: 5px; height: 5px; border-radius: 50%; background: transparent; }
+  .day-dot.on { background: currentColor; opacity: 0.7; }
   .day-tab.today { color: var(--primary); }
   .day-tab.active { background: var(--primary); color: var(--primary-text); }
 

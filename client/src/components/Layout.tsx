@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { MODULES } from '../modules';
+import { BellIcon, LogoutIcon } from './Icons';
 import { NotificationPanel } from './NotificationPanel';
 
 function currentModuleId(): string {
@@ -41,11 +42,11 @@ export function Layout({ onLogout }: { onLogout: () => void }) {
           ))}
         </nav>
         <div className="topbar-actions">
-          <button className="icon-btn" title="Notificações" onClick={() => setShowNotifications(true)}>
-            🔔
+          <button className="icon-btn" title="Notificações" aria-label="Notificações" onClick={() => setShowNotifications(true)}>
+            <BellIcon />
           </button>
-          <button className="icon-btn" title="Sair" onClick={logout}>
-            ⎋
+          <button className="icon-btn" title="Sair" aria-label="Sair" onClick={logout}>
+            <LogoutIcon />
           </button>
         </div>
       </header>

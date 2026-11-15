@@ -52,10 +52,41 @@ export async function enablePush(): Promise<void> {
 
   const reg = await navigator.serviceWorker.ready;
   const { publicKey } = await api.push.publicKey();
-  const sub =
-    (await reg.pushManager.getSubscription()) ??
-    (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) }));
+  const applicationServerKey = urlBase64ToUint8Array(publicKey);
+
+  // Inscrição antiga feita com outra chave VAPID (ex.: ambiente local) não serve: refaz.
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && !sameKey(sub.options.applicationServerKey, applicationServerKey)) {
+    await sub.unsubscribe();
+    sub = null;
+  }
+
+  try {
+    sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+  } catch (err) {
+    throw new Error(explainSubscribeError(err));
+  }
   await api.push.subscribe(sub.toJSON());
+}
+
+function sameKey(a: ArrayBuffer | null, b: Uint8Array): boolean {
+  if (!a) return false;
+  const x = new Uint8Array(a);
+  return x.length === b.length && x.every((v, i) => v === b[i]);
+}
+
+function isBrave(): boolean {
+  return 'brave' in navigator;
+}
+
+function explainSubscribeError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/push service/i.test(message) || (err instanceof DOMException && err.name === 'AbortError')) {
+    return isBrave()
+      ? 'O Brave bloqueia push por padrão. Abra brave://settings/privacy, ative "Usar serviços do Google para mensagens push", reinicie o navegador e tente de novo.'
+      : 'O serviço de push do navegador recusou a inscrição. Verifique se as notificações não estão bloqueadas pelo navegador ou pelo sistema e tente de novo.';
+  }
+  return message;
 }
 
 export async function disablePush(): Promise<void> {
