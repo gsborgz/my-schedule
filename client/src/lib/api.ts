@@ -41,6 +41,12 @@ export const api = {
     publicKey: () => request<{ publicKey: string }>('GET', '/api/push/public-key'),
     subscribe: (sub: PushSubscriptionJSON) => request<void>('POST', '/api/push/subscribe', sub),
     unsubscribe: (endpoint: string) => request<void>('POST', '/api/push/unsubscribe', { endpoint }),
-    test: () => request<{ delivered: number }>('POST', '/api/push/test'),
+    test: () =>
+      request<{ delivered: number; failures: { service: string; status: number | null; message: string }[] }>(
+        'POST',
+        '/api/push/test',
+      ),
+    status: () =>
+      request<{ subscriptions: number; lastCronRun: string | null; cronConfigured: boolean }>('GET', '/api/push/status'),
   },
 };

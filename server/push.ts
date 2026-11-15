@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as webpush from 'web-push';
 import { config } from './config.js';
-import { db } from './db.js';
+import { db, getMeta } from './db.js';
 
 webpush.setVapidDetails(config.vapid.subject, config.vapid.publicKey, config.vapid.privateKey);
 
@@ -12,10 +12,15 @@ export interface PushPayload {
   tag?: string;
 }
 
+export interface SendResult {
+  delivered: number;
+  failures: { service: string; status: number | null; message: string }[];
+}
+
 /** Envia para todos os dispositivos inscritos. Remove inscrições expiradas. */
-export async function sendToAll(payload: PushPayload): Promise<number> {
+export async function sendToAll(payload: PushPayload): Promise<SendResult> {
   const { rows } = await db.execute('SELECT endpoint, keys FROM push_subscriptions');
-  let delivered = 0;
+  const result: SendResult = { delivered: 0, failures: [] };
   await Promise.all(
     rows.map(async (row) => {
       const endpoint = String(row.endpoint);
@@ -24,18 +29,20 @@ export async function sendToAll(payload: PushPayload): Promise<number> {
           TTL: 60 * 30,
           urgency: 'high',
         });
-        delivered++;
+        result.delivered++;
       } catch (err) {
-        const status = (err as { statusCode?: number }).statusCode;
+        const e = err as { statusCode?: number; body?: string; message?: string };
+        const status = e.statusCode ?? null;
         if (status === 404 || status === 410) {
           await db.execute({ sql: 'DELETE FROM push_subscriptions WHERE endpoint = ?', args: [endpoint] });
-        } else {
-          console.error('[push] falha ao enviar:', status ?? err);
         }
+        const failure = { service: new URL(endpoint).host, status, message: (e.body || e.message || String(err)).slice(0, 300) };
+        console.error('[push] falha ao enviar:', failure);
+        result.failures.push(failure);
       }
     }),
   );
-  return delivered;
+  return result;
 }
 
 export const pushRouter = Router();
@@ -66,10 +73,20 @@ pushRouter.post('/unsubscribe', async (req, res) => {
 });
 
 pushRouter.post('/test', async (_req, res) => {
-  const delivered = await sendToAll({
+  const result = await sendToAll({
     title: 'Notificações funcionando ✅',
     body: 'Você vai receber os lembretes da sua agenda aqui.',
     tag: 'test',
   });
-  res.json({ delivered });
+  res.json(result);
+});
+
+/** Diagnóstico: quantos aparelhos inscritos e quando o agendador rodou por último. */
+pushRouter.get('/status', async (_req, res) => {
+  const { rows } = await db.execute('SELECT COUNT(*) AS n FROM push_subscriptions');
+  res.json({
+    subscriptions: Number(rows[0].n),
+    lastCronRun: await getMeta('last_cron_run'),
+    cronConfigured: Boolean(config.cronSecret),
+  });
 });

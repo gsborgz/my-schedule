@@ -13,13 +13,27 @@ const MESSAGES: Record<PushStatus, string> = {
     'No iPhone, toque em Compartilhar → "Adicionar à Tela de Início" e abra o app por lá para ativar as notificações.',
 };
 
+type ServerStatus = Awaited<ReturnType<typeof api.push.status>>;
+
+function timeAgo(iso: string): string {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return 'agora há pouco';
+  if (minutes < 60) return `há ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `há ${hours} h` : `há ${Math.round(hours / 24)} dias`;
+}
+
 export function NotificationPanel({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<PushStatus | null>(null);
+  const [server, setServer] = useState<ServerStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
+  const refreshServer = () => api.push.status().then(setServer).catch(() => {});
+
   useEffect(() => {
     getPushStatus().then(setStatus);
+    refreshServer();
   }, []);
 
   async function run(action: () => Promise<void>) {
@@ -31,14 +45,25 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
       setMessage((err as Error).message);
     } finally {
       setStatus(await getPushStatus());
+      refreshServer();
       setBusy(false);
     }
   }
 
   async function test() {
-    const { delivered } = await api.push.test();
-    setMessage(delivered > 0 ? `Enviado para ${delivered} dispositivo(s).` : 'Nenhum dispositivo inscrito.');
+    const { delivered, failures } = await api.push.test();
+    const parts: string[] = [];
+    if (delivered > 0) {
+      parts.push(
+        `Aceito pelo serviço de push em ${delivered} dispositivo(s). Se não aparecer, verifique se as notificações do navegador estão liberadas no sistema (Windows: Configurações → Sistema → Notificações).`,
+      );
+    }
+    for (const f of failures) parts.push(`Falha em ${f.service} (${f.status ?? 'sem status'}): ${f.message}`);
+    if (parts.length === 0) parts.push('Nenhum dispositivo inscrito no servidor. Desative e ative novamente.');
+    setMessage(parts.join('\n'));
   }
+
+  const cronStale = server?.lastCronRun ? Date.now() - new Date(server.lastCronRun).getTime() > 5 * 60_000 : true;
 
   return (
     <Modal title="Notificações" onClose={onClose}>
@@ -67,7 +92,23 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
           </div>
         </>
       )}
-      {message && <p className="muted small">{message}</p>}
+      {message && <p className="muted small pre">{message}</p>}
+
+      {server && (
+        <dl className="diagnostics small">
+          <dt>Aparelhos inscritos</dt>
+          <dd>{server.subscriptions}</dd>
+          <dt>Agendador</dt>
+          <dd className={cronStale ? 'warn' : ''}>
+            {!server.cronConfigured
+              ? 'CRON_SECRET não configurado no servidor'
+              : server.lastCronRun
+                ? `última execução ${timeAgo(server.lastCronRun)}`
+                : 'nunca executou'}
+            {server.cronConfigured && cronStale && ' (os lembretes agendados não vão disparar)'}
+          </dd>
+        </dl>
+      )}
     </Modal>
   );
 }

@@ -160,6 +160,14 @@ textarea { resize: vertical; }
 }
 
 .status-pill { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 0.8rem; font-weight: 600; margin: 0; background: var(--surface-2); }
+.pre { white-space: pre-line; overflow-wrap: anywhere; }
+.diagnostics {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+  margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.diagnostics dt { color: var(--muted); }
+.diagnostics dd { margin: 0; }
+.diagnostics .warn { color: #d97706; }
 .status-pill.enabled { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success); }
 
 /* ---------- Formulário ---------- */

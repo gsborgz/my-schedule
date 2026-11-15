@@ -1,6 +1,6 @@
 import { listActivities, type Activity } from './activities.js';
 import { config } from './config.js';
-import { db } from './db.js';
+import { db, setMeta } from './db.js';
 import { sendToAll } from './push.js';
 
 const DAY = 1440;
@@ -69,10 +69,12 @@ export async function runReminders(now = new Date()): Promise<{ sent: string[] }
     });
     if (claim.rowsAffected === 0) continue; // já enviado
 
-    const delivered = await sendToAll({ title: a.title, body: reminderBody(a), url: '/#/agenda', tag: `activity-${a.id}` });
-    console.log(`[reminders] "${a.title}" → ${delivered} dispositivo(s)`);
+    const { delivered, failures } = await sendToAll({ title: a.title, body: reminderBody(a), url: '/#/agenda', tag: `activity-${a.id}` });
+    console.log(`[reminders] "${a.title}" → ${delivered} enviado(s), ${failures.length} falha(s)`);
     sent.push(a.title);
   }
+
+  await setMeta('last_cron_run', now.toISOString());
 
   // Limpeza ocasional do histórico.
   if (recent.at(-1)!.key.endsWith('T0000')) {

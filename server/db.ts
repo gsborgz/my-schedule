@@ -32,7 +32,24 @@ const SCHEMA = [
     fire_key    TEXT    NOT NULL,                -- "YYYY-MM-DDTmmmm" (data + minuto do dia)
     PRIMARY KEY (activity_id, fire_key)
   )`,
+  // Valores avulsos (ex.: última execução do agendador).
+  `CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )`,
 ];
+
+export async function setMeta(key: string, value: string): Promise<void> {
+  await db.execute({
+    sql: 'INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    args: [key, value],
+  });
+}
+
+export async function getMeta(key: string): Promise<string | null> {
+  const { rows } = await db.execute({ sql: 'SELECT value FROM meta WHERE key = ?', args: [key] });
+  return rows.length ? String(rows[0].value) : null;
+}
 
 let ready: Promise<void> | undefined;
 
