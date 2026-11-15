@@ -53,14 +53,31 @@ export async function getMeta(key: string): Promise<string | null> {
 
 let ready: Promise<void> | undefined;
 
-/** Cria as tabelas (uma vez por instância). */
+/** Colunas adicionadas depois da primeira versão (bancos existentes são atualizados). */
+const ACTIVITY_COLUMNS: Record<string, string> = {
+  repeat_type: "TEXT NOT NULL DEFAULT 'weekly'", // 'weekly' | 'interval'
+  start_date: 'TEXT', //                             "YYYY-MM-DD" (interval)
+  interval_days: 'INTEGER', //                       a cada N dias (interval)
+};
+
+async function migrate(): Promise<void> {
+  await db.batch(SCHEMA, 'write');
+  const { rows } = await db.execute('PRAGMA table_info(activities)');
+  const existing = new Set(rows.map((r) => String(r.name)));
+  const missing = Object.entries(ACTIVITY_COLUMNS).filter(([name]) => !existing.has(name));
+  if (missing.length) {
+    await db.batch(
+      missing.map(([name, type]) => `ALTER TABLE activities ADD COLUMN ${name} ${type}`),
+      'write',
+    );
+  }
+}
+
+/** Cria/atualiza as tabelas (uma vez por instância). */
 export function ensureSchema(): Promise<void> {
-  ready ??= db.batch(SCHEMA, 'write').then(
-    () => undefined,
-    (err) => {
-      ready = undefined;
-      throw err;
-    },
-  );
+  ready ??= migrate().catch((err) => {
+    ready = undefined;
+    throw err;
+  });
   return ready;
 }

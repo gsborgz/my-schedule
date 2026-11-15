@@ -2,9 +2,8 @@ import { listActivities, type Activity } from './activities.js';
 import { config } from './config.js';
 import { db, setMeta } from './db.js';
 import { sendToAll } from './push.js';
+import { occursOn } from './recurrence.js';
 
-const DAY = 1440;
-const WEEK = 7 * DAY;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 /**
@@ -14,7 +13,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const LOOKBACK_MINUTES = 5;
 
 /** Data/hora de um instante no fuso configurado (independente do fuso do servidor). */
-function inTimeZone(date: Date, timeZone: string) {
+function inTimeZone(instant: number, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
     weekday: 'short',
@@ -24,13 +23,15 @@ function inTimeZone(date: Date, timeZone: string) {
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
-  }).formatToParts(date);
+  }).formatToParts(new Date(instant));
   const get = (type: string) => parts.find((p) => p.type === type)!.value;
   const minutes = Number(get('hour')) * 60 + Number(get('minute'));
-  const date_ = `${get('year')}-${get('month')}-${get('day')}`;
+  const date = `${get('year')}-${get('month')}-${get('day')}`;
   return {
-    minuteOfWeek: WEEKDAYS.indexOf(get('weekday')) * DAY + minutes,
-    key: `${date_}T${String(minutes).padStart(4, '0')}`,
+    date,
+    weekday: WEEKDAYS.indexOf(get('weekday')),
+    minutes,
+    key: `${date}T${String(minutes).padStart(4, '0')}`,
   };
 }
 
@@ -47,25 +48,27 @@ function reminderBody(a: Activity): string {
 
 /** Envia os lembretes devidos agora. Pode ser chamada quantas vezes quiser. */
 export async function runReminders(now = new Date()): Promise<{ sent: string[] }> {
-  // Os últimos minutos, do mais antigo ao atual.
-  const recent = Array.from({ length: LOOKBACK_MINUTES + 1 }, (_, i) =>
-    inTimeZone(new Date(now.getTime() - (LOOKBACK_MINUTES - i) * 60_000), config.timeZone),
-  );
+  // Instantes dos últimos minutos, do mais antigo ao atual.
+  const recent = Array.from({ length: LOOKBACK_MINUTES + 1 }, (_, i) => now.getTime() - (LOOKBACK_MINUTES - i) * 60_000);
   const sent: string[] = [];
 
   for (const a of await listActivities()) {
     if (!a.enabled || a.remindBefore === null) continue;
-    const remindBefore = a.remindBefore;
+    const lead = a.remindBefore * 60_000;
+    const start = toMinutes(a.startTime);
 
-    // Compara em "minutos da semana" para que um lembrete de 00:05 com 10 min de
-    // antecedência dispare corretamente às 23:55 do dia anterior.
-    const fireTimes = new Set(a.days.map((d) => (((d * DAY + toMinutes(a.startTime) - remindBefore) % WEEK) + WEEK) % WEEK));
-    const due = recent.find((m) => fireTimes.has(m.minuteOfWeek));
-    if (!due) continue;
+    // Para cada minuto recente, a ocorrência lembrada naquele minuto começaria
+    // `remindBefore` minutos depois. Calcular pela data dessa ocorrência faz um
+    // lembrete de 00:05 (10 min antes) disparar às 23:55 do dia anterior.
+    const dueAt = recent.find((t) => {
+      const occurrence = inTimeZone(t + lead, config.timeZone);
+      return occurrence.minutes === start && occursOn(a, occurrence.date, occurrence.weekday);
+    });
+    if (dueAt === undefined) continue;
 
     const claim = await db.execute({
       sql: 'INSERT OR IGNORE INTO notification_log (activity_id, fire_key) VALUES (?, ?)',
-      args: [a.id, due.key],
+      args: [a.id, inTimeZone(dueAt, config.timeZone).key],
     });
     if (claim.rowsAffected === 0) continue; // já enviado
 
@@ -77,7 +80,7 @@ export async function runReminders(now = new Date()): Promise<{ sent: string[] }
   await setMeta('last_cron_run', now.toISOString());
 
   // Limpeza ocasional do histórico.
-  if (recent.at(-1)!.key.endsWith('T0000')) {
+  if (inTimeZone(now.getTime(), config.timeZone).minutes === 0) {
     await db.execute("DELETE FROM notification_log WHERE fire_key < date('now', '-7 days')");
   }
 

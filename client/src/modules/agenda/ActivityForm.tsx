@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Modal } from '../../components/Modal';
 import { api } from '../../lib/api';
-import { DAY_SHORT, WEEK_ORDER } from '../../lib/days';
+import { DAY_SHORT, WEEK_ORDER, addDays, formatISODate, toISODate } from '../../lib/days';
 import type { Activity, ActivityInput } from '../../types';
 
 const COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#64748b'];
@@ -17,25 +17,38 @@ const REMINDERS: { label: string; value: number | null }[] = [
 
 interface Props {
   activity: Activity | null;
-  defaultDay: number;
+  /** Dia clicado na agenda: preenche o dia da semana / data de início de uma nova atividade. */
+  defaultDate: Date;
   onClose: () => void;
   onSaved: (a: Activity) => void;
   onDeleted: (id: number) => void;
 }
 
-export function ActivityForm({ activity, defaultDay, onClose, onSaved, onDeleted }: Props) {
-  const [form, setForm] = useState<ActivityInput>(
-    activity ?? {
+export function ActivityForm({ activity, defaultDate, onClose, onSaved, onDeleted }: Props) {
+  const [form, setForm] = useState<ActivityInput>(() => {
+    const defaults: ActivityInput = {
       title: '',
       notes: '',
-      days: [defaultDay],
+      repeatType: 'weekly',
+      days: [defaultDate.getDay()],
+      startDate: toISODate(defaultDate),
+      intervalDays: 2,
       startTime: '08:00',
       endTime: null,
       remindBefore: 10,
       color: COLORS[0],
       enabled: true,
-    },
-  );
+    };
+    if (!activity) return defaults;
+    // Ao editar, mantém valores padrão nos campos do outro tipo de repetição,
+    // para o caso de o usuário trocar o tipo.
+    return {
+      ...activity,
+      days: activity.days.length ? activity.days : defaults.days,
+      startDate: activity.startDate ?? defaults.startDate,
+      intervalDays: activity.intervalDays ?? defaults.intervalDays,
+    };
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -43,6 +56,15 @@ export function ActivityForm({ activity, defaultDay, onClose, onSaved, onDeleted
 
   const toggleDay = (d: number) =>
     set('days', form.days.includes(d) ? form.days.filter((x) => x !== d) : [...form.days, d]);
+
+  // Prévia das próximas datas de uma repetição "a cada N dias".
+  const intervalPreview =
+    form.repeatType === 'interval' && form.startDate && form.intervalDays && form.intervalDays >= 1
+      ? Array.from({ length: 4 }, (_, i) => {
+          const [y, m, d] = form.startDate!.split('-').map(Number);
+          return formatISODate(toISODate(addDays(new Date(y, m - 1, d), i * form.intervalDays!))).slice(0, 5);
+        }).join(', ') + '…'
+      : '';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -78,31 +100,86 @@ export function ActivityForm({ activity, defaultDay, onClose, onSaved, onDeleted
         </label>
 
         <fieldset>
-          <legend>Dias da semana</legend>
-          <div className="day-picker">
-            {WEEK_ORDER.map((d) => (
-              <button
-                type="button"
-                key={d}
-                className={`chip ${form.days.includes(d) ? 'on' : ''}`}
-                aria-pressed={form.days.includes(d)}
-                onClick={() => toggleDay(d)}
-              >
-                {DAY_SHORT[d]}
-              </button>
-            ))}
-          </div>
-          <div className="row gap small">
-            <button type="button" className="link" onClick={() => set('days', [1, 2, 3, 4, 5])}>
-              Seg a Sex
+          <legend>Repetição</legend>
+          <div className="segmented" role="radiogroup">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={form.repeatType === 'weekly'}
+              className={form.repeatType === 'weekly' ? 'on' : ''}
+              onClick={() => set('repeatType', 'weekly')}
+            >
+              Dias da semana
             </button>
-            <button type="button" className="link" onClick={() => set('days', [0, 6])}>
-              Fim de semana
-            </button>
-            <button type="button" className="link" onClick={() => set('days', [0, 1, 2, 3, 4, 5, 6])}>
-              Todos
+            <button
+              type="button"
+              role="radio"
+              aria-checked={form.repeatType === 'interval'}
+              className={form.repeatType === 'interval' ? 'on' : ''}
+              onClick={() => set('repeatType', 'interval')}
+            >
+              A cada N dias
             </button>
           </div>
+
+          {form.repeatType === 'weekly' ? (
+            <>
+              <div className="day-picker">
+                {WEEK_ORDER.map((d) => (
+                  <button
+                    type="button"
+                    key={d}
+                    className={`chip ${form.days.includes(d) ? 'on' : ''}`}
+                    aria-pressed={form.days.includes(d)}
+                    onClick={() => toggleDay(d)}
+                  >
+                    {DAY_SHORT[d]}
+                  </button>
+                ))}
+              </div>
+              <div className="row gap small">
+                <button type="button" className="link" onClick={() => set('days', [1, 2, 3, 4, 5])}>
+                  Seg a Sex
+                </button>
+                <button type="button" className="link" onClick={() => set('days', [0, 6])}>
+                  Fim de semana
+                </button>
+                <button type="button" className="link" onClick={() => set('days', [0, 1, 2, 3, 4, 5, 6])}>
+                  Todos
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="row gap">
+                <label className="grow">
+                  <span>Começa em</span>
+                  <input
+                    type="date"
+                    value={form.startDate ?? ''}
+                    onChange={(e) => set('startDate', e.target.value || null)}
+                    required
+                  />
+                </label>
+                <label className="interval-field">
+                  <span>Repetir a cada</span>
+                  <div className="input-suffix">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={365}
+                      value={form.intervalDays ?? ''}
+                      onChange={(e) => set('intervalDays', e.target.value === '' ? null : Number(e.target.value))}
+                      required
+                    />
+                    <span className="muted">dias</span>
+                  </div>
+                </label>
+              </div>
+              {intervalPreview && <p className="muted small hint">Próximas: {intervalPreview}</p>}
+            </>
+          )}
         </fieldset>
 
         <div className="row gap">
@@ -114,7 +191,14 @@ export function ActivityForm({ activity, defaultDay, onClose, onSaved, onDeleted
             <span>
               Término <span className="muted small">(opcional)</span>
             </span>
-            <input type="time" value={form.endTime ?? ''} onChange={(e) => set('endTime', e.target.value || null)} />
+            <div className="input-action">
+              <input type="time" value={form.endTime ?? ''} onChange={(e) => set('endTime', e.target.value || null)} />
+              {form.endTime && (
+                <button type="button" className="icon-btn" aria-label="Limpar término" onClick={() => set('endTime', null)}>
+                  ✕
+                </button>
+              )}
+            </div>
           </label>
         </div>
 

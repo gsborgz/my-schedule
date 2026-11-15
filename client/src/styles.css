@@ -181,6 +181,23 @@ textarea { resize: vertical; }
 .form .checkbox input { width: auto; }
 .form-actions { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
 
+.segmented {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+  background: var(--surface-2); border-radius: 12px;
+}
+.segmented button {
+  padding: 8px; border: none; border-radius: 9px; background: transparent;
+  cursor: pointer; font-weight: 500; color: var(--muted);
+}
+.segmented button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+.input-action { display: flex; align-items: center; gap: 4px; }
+.input-action input { flex: 1; min-width: 0; }
+.input-suffix { display: flex; align-items: center; gap: 8px; }
+.input-suffix input { width: 72px; }
+.interval-field { flex: 0 0 auto; }
+.hint { margin: 0; }
+
 .day-picker { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .chip {
   padding: 8px 0; border-radius: 10px; cursor: pointer;
@@ -196,6 +213,11 @@ textarea { resize: vertical; }
 /* ---------- Agenda ---------- */
 .agenda-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .agenda-header p { margin: 2px 0 0; }
+
+.week-nav { display: flex; align-items: center; gap: 4px; margin-bottom: 14px; }
+.week-nav .icon-btn { font-size: 1.5rem; line-height: 1; }
+.week-range { font-weight: 600; min-width: 120px; text-align: center; }
+.small-btn { padding: 5px 12px; margin-left: 8px; font-size: 0.85rem; }
 
 .day-tabs { display: none; }
 
@@ -240,7 +262,8 @@ textarea { resize: vertical; }
 
 /* Telas médias/pequenas: um dia por vez, com abas */
 @media (max-width: 1000px) {
-  .agenda-header .btn { display: none; }
+  .agenda-header .new-btn { display: none; }
+  .day-tab strong { font-size: 1rem; line-height: 1.1; }
 
   .day-tabs {
     display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
