@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { db } from './db.ts';
+import type { Row } from '@libsql/client';
+import { db } from './db.js';
 
 export interface Activity {
   id: number;
@@ -15,29 +16,17 @@ export interface Activity {
 
 type ActivityInput = Omit<Activity, 'id'>;
 
-interface ActivityRow {
-  id: number;
-  title: string;
-  notes: string;
-  days: string;
-  start_time: string;
-  end_time: string | null;
-  remind_before: number | null;
-  color: string;
-  enabled: number;
-}
-
-function fromRow(row: ActivityRow): Activity {
+function fromRow(row: Row): Activity {
   return {
-    id: row.id,
-    title: row.title,
-    notes: row.notes,
-    days: JSON.parse(row.days),
-    startTime: row.start_time,
-    endTime: row.end_time,
-    remindBefore: row.remind_before,
-    color: row.color,
-    enabled: row.enabled === 1,
+    id: Number(row.id),
+    title: String(row.title),
+    notes: String(row.notes),
+    days: JSON.parse(String(row.days)),
+    startTime: String(row.start_time),
+    endTime: row.end_time === null ? null : String(row.end_time),
+    remindBefore: row.remind_before === null ? null : Number(row.remind_before),
+    color: String(row.color),
+    enabled: Number(row.enabled) === 1,
   };
 }
 
@@ -80,7 +69,7 @@ function parseInput(body: unknown): ActivityInput | string {
   return { title, notes, days, startTime, endTime, remindBefore, color, enabled };
 }
 
-function toParams(a: ActivityInput) {
+function toArgs(a: ActivityInput) {
   return {
     title: a.title,
     notes: a.notes,
@@ -93,54 +82,53 @@ function toParams(a: ActivityInput) {
   };
 }
 
-export function listActivities(): Activity[] {
-  const rows = db.prepare('SELECT * FROM activities ORDER BY start_time, title').all() as unknown as ActivityRow[];
+export async function listActivities(): Promise<Activity[]> {
+  const { rows } = await db.execute('SELECT * FROM activities ORDER BY start_time, title');
   return rows.map(fromRow);
-}
-
-function getActivity(id: number): Activity | undefined {
-  const row = db.prepare('SELECT * FROM activities WHERE id = ?').get(id) as unknown as ActivityRow | undefined;
-  return row && fromRow(row);
 }
 
 export const activitiesRouter = Router();
 
-activitiesRouter.get('/', (_req, res) => {
-  res.json(listActivities());
+activitiesRouter.get('/', async (_req, res) => {
+  res.json(await listActivities());
 });
 
-activitiesRouter.post('/', (req, res) => {
+activitiesRouter.post('/', async (req, res) => {
   const input = parseInput(req.body);
   if (typeof input === 'string') return void res.status(400).json({ error: input });
-  const result = db
-    .prepare(
-      `INSERT INTO activities (title, notes, days, start_time, end_time, remind_before, color, enabled)
-       VALUES (:title, :notes, :days, :start_time, :end_time, :remind_before, :color, :enabled)`,
-    )
-    .run(toParams(input));
-  res.status(201).json(getActivity(Number(result.lastInsertRowid)));
+  const { rows } = await db.execute({
+    sql: `INSERT INTO activities (title, notes, days, start_time, end_time, remind_before, color, enabled)
+          VALUES (:title, :notes, :days, :start_time, :end_time, :remind_before, :color, :enabled)
+          RETURNING *`,
+    args: toArgs(input),
+  });
+  res.status(201).json(fromRow(rows[0]));
 });
 
-activitiesRouter.put('/:id', (req, res) => {
-  const id = Number(req.params.id);
+activitiesRouter.put('/:id', async (req, res) => {
   const input = parseInput(req.body);
   if (typeof input === 'string') return void res.status(400).json({ error: input });
-  const result = db
-    .prepare(
-      `UPDATE activities SET title = :title, notes = :notes, days = :days, start_time = :start_time,
-         end_time = :end_time, remind_before = :remind_before, color = :color, enabled = :enabled,
-         updated_at = datetime('now')
-       WHERE id = :id`,
-    )
-    .run({ ...toParams(input), id });
-  if (result.changes === 0) return void res.status(404).json({ error: 'Atividade não encontrada' });
-  res.json(getActivity(id));
+  const { rows } = await db.execute({
+    sql: `UPDATE activities SET title = :title, notes = :notes, days = :days, start_time = :start_time,
+            end_time = :end_time, remind_before = :remind_before, color = :color, enabled = :enabled,
+            updated_at = datetime('now')
+          WHERE id = :id
+          RETURNING *`,
+    args: { ...toArgs(input), id: Number(req.params.id) },
+  });
+  if (rows.length === 0) return void res.status(404).json({ error: 'Atividade não encontrada' });
+  res.json(fromRow(rows[0]));
 });
 
-activitiesRouter.delete('/:id', (req, res) => {
+activitiesRouter.delete('/:id', async (req, res) => {
   const id = Number(req.params.id);
-  db.prepare('DELETE FROM notification_log WHERE activity_id = ?').run(id);
-  const result = db.prepare('DELETE FROM activities WHERE id = ?').run(id);
-  if (result.changes === 0) return void res.status(404).json({ error: 'Atividade não encontrada' });
+  const [, result] = await db.batch(
+    [
+      { sql: 'DELETE FROM notification_log WHERE activity_id = ?', args: [id] },
+      { sql: 'DELETE FROM activities WHERE id = ?', args: [id] },
+    ],
+    'write',
+  );
+  if (result.rowsAffected === 0) return void res.status(404).json({ error: 'Atividade não encontrada' });
   res.status(204).end();
 });

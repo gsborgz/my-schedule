@@ -1,16 +1,13 @@
 import fs from 'node:fs';
-import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import { config } from './config.ts';
+import { createClient } from '@libsql/client';
+import { config } from './config.js';
 
-fs.mkdirSync(config.dataDir, { recursive: true });
+if (config.database.url.startsWith('file:')) fs.mkdirSync(config.database.dataDir, { recursive: true });
 
-export const db = new DatabaseSync(path.join(config.dataDir, 'app.db'));
+export const db = createClient({ url: config.database.url, authToken: config.database.authToken });
 
-db.exec(`
-  PRAGMA journal_mode = WAL;
-
-  CREATE TABLE IF NOT EXISTS activities (
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS activities (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     title         TEXT    NOT NULL,
     notes         TEXT    NOT NULL DEFAULT '',
@@ -22,19 +19,31 @@ db.exec(`
     enabled       INTEGER NOT NULL DEFAULT 1,
     created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS push_subscriptions (
+  )`,
+  `CREATE TABLE IF NOT EXISTS push_subscriptions (
     endpoint   TEXT PRIMARY KEY,
     keys       TEXT NOT NULL,                    -- JSON: { p256dh, auth }
     user_agent TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  -- Evita enviar o mesmo lembrete duas vezes.
-  CREATE TABLE IF NOT EXISTS notification_log (
+  )`,
+  // Evita enviar o mesmo lembrete duas vezes.
+  `CREATE TABLE IF NOT EXISTS notification_log (
     activity_id INTEGER NOT NULL,
     fire_key    TEXT    NOT NULL,                -- "YYYY-MM-DDTmmmm" (data + minuto do dia)
     PRIMARY KEY (activity_id, fire_key)
+  )`,
+];
+
+let ready: Promise<void> | undefined;
+
+/** Cria as tabelas (uma vez por instância). */
+export function ensureSchema(): Promise<void> {
+  ready ??= db.batch(SCHEMA, 'write').then(
+    () => undefined,
+    (err) => {
+      ready = undefined;
+      throw err;
+    },
   );
-`);
+  return ready;
+}

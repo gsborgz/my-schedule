@@ -23,6 +23,7 @@ const env = {
   VAPID_PRIVATE_KEY: current.VAPID_PRIVATE_KEY || vapid.privateKey,
   VAPID_SUBJECT: current.VAPID_SUBJECT || 'mailto:admin@example.com',
   APP_TIMEZONE: current.APP_TIMEZONE || 'America/Sao_Paulo',
+  CRON_SECRET: current.CRON_SECRET || crypto.randomBytes(24).toString('base64url'),
   PORT: current.PORT || '3000',
 };
 

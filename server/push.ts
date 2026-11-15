@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as webpush from 'web-push';
-import { config } from './config.ts';
-import { db } from './db.ts';
+import { config } from './config.js';
+import { db } from './db.js';
 
 webpush.setVapidDetails(config.vapid.subject, config.vapid.publicKey, config.vapid.privateKey);
 
@@ -12,19 +12,15 @@ export interface PushPayload {
   tag?: string;
 }
 
-interface SubscriptionRow {
-  endpoint: string;
-  keys: string;
-}
-
 /** Envia para todos os dispositivos inscritos. Remove inscrições expiradas. */
 export async function sendToAll(payload: PushPayload): Promise<number> {
-  const subs = db.prepare('SELECT endpoint, keys FROM push_subscriptions').all() as unknown as SubscriptionRow[];
+  const { rows } = await db.execute('SELECT endpoint, keys FROM push_subscriptions');
   let delivered = 0;
   await Promise.all(
-    subs.map(async (s) => {
+    rows.map(async (row) => {
+      const endpoint = String(row.endpoint);
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys) }, JSON.stringify(payload), {
+        await webpush.sendNotification({ endpoint, keys: JSON.parse(String(row.keys)) }, JSON.stringify(payload), {
           TTL: 60 * 30,
           urgency: 'high',
         });
@@ -32,7 +28,7 @@ export async function sendToAll(payload: PushPayload): Promise<number> {
       } catch (err) {
         const status = (err as { statusCode?: number }).statusCode;
         if (status === 404 || status === 410) {
-          db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(s.endpoint);
+          await db.execute({ sql: 'DELETE FROM push_subscriptions WHERE endpoint = ?', args: [endpoint] });
         } else {
           console.error('[push] falha ao enviar:', status ?? err);
         }
@@ -48,21 +44,24 @@ pushRouter.get('/public-key', (_req, res) => {
   res.json({ publicKey: config.vapid.publicKey });
 });
 
-pushRouter.post('/subscribe', (req, res) => {
+pushRouter.post('/subscribe', async (req, res) => {
   const { endpoint, keys } = req.body ?? {};
   if (typeof endpoint !== 'string' || !endpoint.startsWith('https://') || !keys?.p256dh || !keys?.auth) {
     return void res.status(400).json({ error: 'Inscrição inválida' });
   }
-  db.prepare(
-    `INSERT INTO push_subscriptions (endpoint, keys, user_agent) VALUES (?, ?, ?)
-     ON CONFLICT(endpoint) DO UPDATE SET keys = excluded.keys, user_agent = excluded.user_agent`,
-  ).run(endpoint, JSON.stringify({ p256dh: keys.p256dh, auth: keys.auth }), req.get('user-agent') ?? null);
+  await db.execute({
+    sql: `INSERT INTO push_subscriptions (endpoint, keys, user_agent) VALUES (?, ?, ?)
+          ON CONFLICT(endpoint) DO UPDATE SET keys = excluded.keys, user_agent = excluded.user_agent`,
+    args: [endpoint, JSON.stringify({ p256dh: keys.p256dh, auth: keys.auth }), req.get('user-agent') ?? null],
+  });
   res.status(204).end();
 });
 
-pushRouter.post('/unsubscribe', (req, res) => {
+pushRouter.post('/unsubscribe', async (req, res) => {
   const { endpoint } = req.body ?? {};
-  if (typeof endpoint === 'string') db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+  if (typeof endpoint === 'string') {
+    await db.execute({ sql: 'DELETE FROM push_subscriptions WHERE endpoint = ?', args: [endpoint] });
+  }
   res.status(204).end();
 });
 

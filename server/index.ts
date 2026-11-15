@@ -1,56 +1,13 @@
-import './env.ts';
+// Entrada para rodar localmente (npm run dev / npm start).
+// Na Vercel, quem serve a API é api/index.ts e o frontend sai de dist/ direto pela CDN.
 import fs from 'node:fs';
 import path from 'node:path';
-import express, { type ErrorRequestHandler } from 'express';
-import { activitiesRouter } from './activities.ts';
-import {
-  checkPassword,
-  clearSessionCookie,
-  isAuthenticated,
-  isLoginRateLimited,
-  requireAuth,
-  resetLoginAttempts,
-  setSessionCookie,
-} from './auth.ts';
-import { config } from './config.ts';
-import { pushRouter } from './push.ts';
-import { startScheduler } from './scheduler.ts';
+import express from 'express';
+import app from './app.js';
+import { config } from './config.js';
+import { ensureSchema } from './db.js';
+import { runReminders } from './scheduler.js';
 
-const app = express();
-app.set('trust proxy', 1); // respeita X-Forwarded-Proto atrás de proxy HTTPS
-app.disable('x-powered-by');
-app.use(express.json({ limit: '100kb' }));
-
-// --- Sessão (rotas públicas) ---
-app.get('/api/session', (req, res) => {
-  res.json({ authenticated: isAuthenticated(req) });
-});
-
-app.post('/api/login', (req, res) => {
-  const ip = req.ip ?? 'unknown';
-  if (isLoginRateLimited(ip)) {
-    return void res.status(429).json({ error: 'Muitas tentativas. Tente novamente em alguns minutos.' });
-  }
-  if (typeof req.body?.password !== 'string' || !checkPassword(req.body.password)) {
-    return void res.status(401).json({ error: 'Senha incorreta' });
-  }
-  resetLoginAttempts(ip);
-  setSessionCookie(req, res);
-  res.status(204).end();
-});
-
-app.post('/api/logout', (_req, res) => {
-  clearSessionCookie(res);
-  res.status(204).end();
-});
-
-// --- Módulos (exigem senha) ---
-app.use('/api', requireAuth);
-app.use('/api/activities', activitiesRouter);
-app.use('/api/push', pushRouter);
-app.use('/api', (_req, res) => void res.status(404).json({ error: 'Rota não encontrada' }));
-
-// --- Frontend compilado (produção) ---
 const dist = path.resolve('dist');
 if (fs.existsSync(dist)) {
   app.use(
@@ -63,13 +20,13 @@ if (fs.existsSync(dist)) {
   app.get('/{*splat}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
 
-const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ error: 'Erro interno' });
-};
-app.use(errorHandler);
-
-app.listen(config.port, () => {
+app.listen(config.port, async () => {
   console.log(`[server] http://localhost:${config.port}`);
-  startScheduler();
+  await ensureSchema();
+
+  // Localmente o próprio servidor faz o papel do cron.
+  const run = () => runReminders().catch((err) => console.error('[reminders]', err));
+  run();
+  setInterval(run, 30_000);
+  console.log(`[reminders] agendador local ativo (fuso: ${config.timeZone})`);
 });

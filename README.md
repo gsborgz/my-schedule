@@ -13,8 +13,9 @@ App pessoal de rotina. Funciona no navegador e no celular (como PWA), protegido 
 ## Stack
 
 - **Frontend:** React + Vite (PWA com service worker): `client/`
-- **Backend:** Node 24 + Express + SQLite nativo (`node:sqlite`): `server/`
-- **Push:** Web Push (VAPID) via `web-push`. O agendador roda no servidor a cada 20s e envia o lembrete `remindBefore` minutos antes do início de cada atividade.
+- **Backend:** Node + Express (`server/`), servido na Vercel por `api/index.ts`
+- **Banco:** libSQL: Turso em produção, arquivo `data/app.db` localmente
+- **Push:** Web Push (VAPID) via `web-push`. A rota `/api/cron/reminders` envia o lembrete `remindBefore` minutos antes do início de cada atividade. Em produção ela é chamada a cada minuto por um agendador externo. Localmente, o próprio servidor a chama a cada 30s.
 
 ## Rodando
 
@@ -39,11 +40,27 @@ npm start        # serve API + frontend em http://localhost:3000
 | `SESSION_SECRET`    | Assina o cookie de sessão. Trocar desconecta todos os aparelhos |
 | `VAPID_*`           | Chaves do Web Push. **Não troque** depois de ativar push, senão os aparelhos precisam reativar |
 | `APP_TIMEZONE`      | Fuso usado pelos lembretes (padrão `America/Sao_Paulo`)      |
-| `PORT`, `DATA_DIR`  | Porta e pasta do banco SQLite (padrão `data/`)               |
+| `CRON_SECRET`       | Protege a rota `/api/cron/reminders`                         |
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Banco em produção. Sem elas, usa `data/app.db` |
+| `PORT`, `DATA_DIR`  | Só local: porta e pasta do banco                             |
+
+## Deploy na Vercel
+
+1. Importe o repositório na Vercel. O `vercel.json` já define o build (`npm run build` → `dist`) e direciona `/api/*` para a função.
+2. **Banco:** Storage → Marketplace → **Turso** → conecte ao projeto. Isso cria `TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN`. As tabelas são criadas sozinhas na primeira requisição.
+3. **Variáveis** (Settings → Environment Variables), copiando do `.env`: `APP_PASSWORD`, `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `APP_TIMEZONE`, `CRON_SECRET`. Depois, faça um redeploy.
+4. **Agendador** (a cada minuto). No plano Hobby, o Cron da Vercel só roda uma vez por dia, então use um serviço externo gratuito como o [cron-job.org](https://cron-job.org):
+   - URL: `https://SEU-APP.vercel.app/api/cron/reminders`
+   - Frequência: a cada 1 minuto
+   - Cabeçalho: `Authorization: Bearer <CRON_SECRET>`
+
+   No plano Pro, dá para usar o Vercel Cron: adicione `"crons": [{ "path": "/api/cron/reminders", "schedule": "* * * * *" }]` ao `vercel.json`. A Vercel envia o `CRON_SECRET` automaticamente.
+
+   Se o agendador atrasar ou pular algumas execuções, os lembretes dos últimos 5 minutos ainda são enviados, sem duplicar.
 
 ## Notificações no celular
 
-Push exige **HTTPS** (no `localhost` funciona sem). Para usar no celular, o app precisa estar publicado num servidor com HTTPS que fique **sempre ligado**, porque é ele quem dispara os lembretes. Exemplos: VPS, Railway, Fly.io, Render (plano pago, o grátis "dorme"). Mantenha a pasta `data/` em disco persistente.
+Push exige **HTTPS**, que a Vercel já fornece (no `localhost` funciona sem).
 
 - **Android (Chrome):** abra o site, toque em 🔔 e depois em "Ativar". Instalar na tela inicial é opcional, mas recomendado.
 - **iPhone (iOS 16.4+):** no Safari, Compartilhar → **Adicionar à Tela de Início**. Abra o app pelo ícone, toque em 🔔 e depois em "Ativar". No iOS, push só funciona no app instalado.
@@ -54,13 +71,15 @@ Para testar pelo celular durante o desenvolvimento, use um túnel HTTPS (ex.: `c
 ## Estrutura
 
 ```
+api/index.ts      função da Vercel (exporta o app Express)
 server/
-  index.ts        rotas e servidor
+  app.ts          rotas
+  index.ts        servidor local (estáticos + agendador a cada 30s)
   auth.ts         senha única + cookie de sessão assinado
   activities.ts   CRUD da agenda
   push.ts         inscrições e envio de push
-  scheduler.ts    dispara os lembretes no horário
-  db.ts           schema SQLite
+  scheduler.ts    calcula e envia os lembretes devidos
+  db.ts           cliente libSQL + schema
 client/
   public/sw.js    service worker (recebe push e mostra a notificação)
   src/modules.tsx registro dos módulos (adicione novos aqui)

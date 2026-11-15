@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
-import { config } from './config.ts';
+import { config } from './config.js';
 
 const COOKIE = 'ms_session';
 const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
