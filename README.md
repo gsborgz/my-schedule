@@ -41,13 +41,14 @@ npm start        # serve API + frontend em http://localhost:3000
 | `VAPID_*`           | Chaves do Web Push. **Não troque** depois de ativar push, senão os aparelhos precisam reativar |
 | `APP_TIMEZONE`      | Fuso usado pelos lembretes (padrão `America/Sao_Paulo`)      |
 | `CRON_SECRET`       | Protege a rota `/api/cron/reminders`                         |
-| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Banco em produção. Sem elas, usa `data/app.db` |
+| `APP_DATABASE_URL`, `APP_DATABASE_TOKEN` | Banco **principal** do Turso em produção. Sem elas, usa as `TURSO_*` e, na falta delas, `data/app.db` |
 | `PORT`, `DATA_DIR`  | Só local: porta e pasta do banco                             |
 
 ## Deploy na Vercel
 
 1. Importe o repositório na Vercel. O `vercel.json` já define o build (`npm run build` → `dist`) e direciona `/api/*` para a função.
-2. **Banco:** Storage → Marketplace → **Turso** → conecte ao projeto. Isso cria `TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN`. As tabelas são criadas sozinhas na primeira requisição.
+2. **Banco:** crie um banco no Turso (pelo Marketplace da Vercel ou em turso.tech). Pegue a URL do banco **principal** (`libsql://<banco>-<org>.turso.io`) e gere um token para ele. Cadastre os dois como `APP_DATABASE_URL` e `APP_DATABASE_TOKEN`. As tabelas são criadas sozinhas na primeira requisição.
+   > ⚠️ A integração Turso da Vercel cria uma **branch vazia a cada deploy** e aponta `TURSO_DATABASE_URL` para ela. Por isso os dados "somem" a cada deploy se você usar essas variáveis.
 3. **Variáveis** (Settings → Environment Variables), copiando do `.env`: `APP_PASSWORD`, `SESSION_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `APP_TIMEZONE`, `CRON_SECRET`. Depois, faça um redeploy.
 4. **Agendador** (a cada minuto). No plano Hobby, o Cron da Vercel só roda uma vez por dia, então use um serviço externo gratuito como o [cron-job.org](https://cron-job.org):
    - URL: `https://SEU-APP.vercel.app/api/cron/reminders`

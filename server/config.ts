@@ -8,11 +8,23 @@ function required(name: string): string {
 
 const dataDir = path.resolve(process.env.DATA_DIR ?? 'data');
 
+// Banco usado, em ordem de prioridade:
+// 1. APP_DATABASE_URL/TOKEN: definidas por você, apontando para o banco principal.
+//    A integração Turso da Vercel cria uma *branch* nova (vazia) a cada deploy e troca
+//    TURSO_DATABASE_URL para ela, então em produção use estas.
+// 2. TURSO_DATABASE_URL/AUTH_TOKEN: criadas pela integração.
+// 3. Arquivo local data/app.db (só desenvolvimento).
+const remote = process.env.APP_DATABASE_URL
+  ? { url: process.env.APP_DATABASE_URL, authToken: process.env.APP_DATABASE_TOKEN, source: 'APP_DATABASE_URL' }
+  : process.env.TURSO_DATABASE_URL
+    ? { url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN, source: 'TURSO_DATABASE_URL' }
+    : null;
+
 // Na Vercel o disco é temporário: sem banco remoto os dados sumiriam a cada deploy/reinício.
-if (process.env.VERCEL && !process.env.TURSO_DATABASE_URL) {
+if (process.env.VERCEL && !remote) {
   throw new Error(
-    'TURSO_DATABASE_URL não está definida neste ambiente da Vercel. Conecte o banco Turso ao projeto (Storage) ' +
-      'ou cadastre TURSO_DATABASE_URL e TURSO_AUTH_TOKEN em Settings → Environment Variables (ambiente Production) e faça redeploy.',
+    'Nenhum banco remoto configurado neste ambiente da Vercel. Cadastre APP_DATABASE_URL e APP_DATABASE_TOKEN ' +
+      '(apontando para o banco principal do Turso) em Settings → Environment Variables e faça redeploy.',
   );
 }
 
@@ -24,10 +36,9 @@ export const config = {
   /** Protege a rota de cron. Obrigatório em produção. */
   cronSecret: process.env.CRON_SECRET,
   database: {
-    // Em produção: Turso (variáveis criadas pela integração da Vercel).
-    // Local: arquivo SQLite em data/app.db.
-    url: process.env.TURSO_DATABASE_URL ?? `file:${path.join(dataDir, 'app.db').replace(/\\/g, '/')}`,
-    authToken: process.env.TURSO_AUTH_TOKEN,
+    url: remote?.url ?? `file:${path.join(dataDir, 'app.db').replace(/\\/g, '/')}`,
+    authToken: remote?.authToken,
+    source: remote?.source ?? 'arquivo local',
     dataDir,
   },
   vapid: {
