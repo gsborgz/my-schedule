@@ -83,19 +83,10 @@ pushRouter.post('/test', async (_req, res) => {
 
 /** Diagnóstico: quantos aparelhos inscritos e quando o agendador rodou por último. */
 pushRouter.get('/status', async (_req, res) => {
-  const { rows } = await db.execute(
-    'SELECT (SELECT COUNT(*) FROM push_subscriptions) AS subs, (SELECT COUNT(*) FROM activities) AS acts',
-  );
+  const { rows } = await db.execute('SELECT COUNT(*) AS n FROM push_subscriptions');
   res.json({
-    subscriptions: Number(rows[0].subs),
-    activities: Number(rows[0].acts),
-    dbId: await getMeta('db_id'),
-    dbCreatedAt: await getMeta('db_created_at'),
-    deployment: process.env.VERCEL_DEPLOYMENT_ID?.slice(-8) ?? 'local',
+    subscriptions: Number(rows[0].n),
     lastCronRun: await getMeta('last_cron_run'),
     cronConfigured: Boolean(config.cronSecret),
-    database: config.database.url.startsWith('file:')
-      ? 'arquivo local'
-      : `${new URL(config.database.url).host.split('.')[0]} (via ${config.database.source})`,
   });
 });

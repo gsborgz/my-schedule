@@ -96,17 +96,6 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
 
       {server && (
         <dl className="diagnostics small">
-          <dt>Banco de dados</dt>
-          <dd>{server.database}</dd>
-          <dt>ID do banco</dt>
-          <dd>
-            {server.dbId ?? '—'}
-            {server.dbCreatedAt && <span className="muted"> · criado {new Date(server.dbCreatedAt).toLocaleString('pt-BR')}</span>}
-          </dd>
-          <dt>Atividades salvas</dt>
-          <dd>{server.activities}</dd>
-          <dt>Deploy</dt>
-          <dd>{server.deployment}</dd>
           <dt>Aparelhos inscritos</dt>
           <dd>{server.subscriptions}</dd>
           <dt>Agendador</dt>

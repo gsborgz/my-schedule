@@ -71,12 +71,6 @@ async function migrate(): Promise<void> {
       'write',
     );
   }
-  // Identidade do banco: gravada uma única vez. Se mudar entre deploys, o app está
-  // falando com outro banco (ex.: integração criando um banco por deploy).
-  await db.execute({
-    sql: "INSERT OR IGNORE INTO meta (key, value) VALUES ('db_id', ?), ('db_created_at', ?)",
-    args: [crypto.randomUUID().slice(0, 8), new Date().toISOString()],
-  });
 }
 
 /** Cria/atualiza as tabelas (uma vez por instância). */

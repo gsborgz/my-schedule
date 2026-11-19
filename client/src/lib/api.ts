@@ -47,16 +47,7 @@ export const api = {
         '/api/push/test',
       ),
     status: () =>
-      request<{
-        subscriptions: number;
-        activities: number;
-        dbId: string | null;
-        dbCreatedAt: string | null;
-        deployment: string;
-        lastCronRun: string | null;
-        cronConfigured: boolean;
-        database: string;
-      }>(
+      request<{ subscriptions: number; lastCronRun: string | null; cronConfigured: boolean }>(
         'GET',
         '/api/push/status',
       ),
